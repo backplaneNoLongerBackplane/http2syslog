@@ -35,6 +35,7 @@ func main() {
 
 		msg, err := ioutil.ReadAll(r.Body)
 		if err != nil {
+			log.Println("error: ", err)
 			logger.Err(err.Error())
 		}
 		log.Println(string(msg))
