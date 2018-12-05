@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bufio"
 	"flag"
-	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -19,28 +19,57 @@ var (
 func main() {
 	flag.Parse()
 
-	log.Printf("Dialing %s://%s\n", *network, *addr)
-	logger, err := syslog.Dial(*network, *addr, syslog.LOG_EMERG|syslog.LOG_KERN, *tag)
+	/*
+		App logs go to stdout and are prefixed with the line numbers.
+	*/
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
+	/*
+		Dial the syslog server and get a writer-logger...
+	*/
+	log.Printf("Dialing syslog server: %s://%s\n", *network, *addr)
+	sysLog, err := syslog.Dial(*network, *addr, syslog.LOG_INFO|syslog.LOG_USER, *tag)
 	if err != nil {
 		log.Fatal("failed to dial syslog")
 	}
-	defer logger.Close()
+	defer sysLog.Close()
 
-	log.Printf("Listening at http://localhost:%s\n", *port)
+	/*
+		...then listen on HTTP and handle log requests.
+	*/
+	log.Printf("Listening for logs over http at http://localhost:%s\n", *port)
 	http.ListenAndServe(":"+*port, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body == nil {
+		/*
+			Ignore all requests that do not POST a body...
+		*/
+		if r.Body == nil || r.Method != "POST" {
 			return
 		}
 		defer r.Body.Close()
 
-		msg, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			log.Println("error: ", err)
-			logger.Err(err.Error())
+		/*
+			...otherwise scan each line as a log message...
+		*/
+		scanner := bufio.NewScanner(r.Body)
+		for scanner.Scan() {
+			msg := scanner.Text()
+			log.Println(msg)
+			/*
+				...and send each message to the syslog server.
+			*/
+			if err := sysLog.Info(msg); err != nil {
+				log.Println("error: failed to send log message:", err)
+			}
 		}
-		log.Println(string(msg))
-		if err := logger.Info(string(msg)); err != nil {
-			log.Println("error: ", err)
+		/*
+			If there are any errors encountered scanning the request body, log them here.
+		*/
+		if err := scanner.Err(); err != nil {
+			log.Println("error: failed to scan log messages:", err)
+			if err := sysLog.Err("http2syslog: " + err.Error()); err != nil {
+				log.Println("error: failed to send error message:", err)
+			}
 		}
 	}))
 }
