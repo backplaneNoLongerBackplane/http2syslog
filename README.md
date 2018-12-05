@@ -12,6 +12,9 @@ $ go get -u github.com/backplane/http2syslog
 ### Usage
 
 ```sh
-$ http2syslog -port "5000" -network "udp" -addr "logsN.papertrailapp.com:XXXXX" -tag "myapp"
-$ curl -X POST -d '{"Foo":"Bar"}' http://localhost:5000
+$ http2syslog -port "5001" -network "udp" -addr "logsN.papertrailapp.com:XXXXX" -tag "myapp"
+$ curl -X POST --data-binary @- http://localhost:5001 <<EOF
+{"first":"message"}
+{"second":"message"}
+EOF
 ```
